@@ -1,0 +1,42 @@
+<div id="room-edit-form" style="margin-bottom:1.5rem">
+  <form method="post" action="/admin/rooms/{{ room.id }}/edit">
+    <div class="card">
+      <div class="card-header">
+        <h3>Редактирование комнаты</h3>
+        <div class="flex gap-2">
+          <button type="submit" class="btn btn-primary btn-sm">Сохранить</button>
+          <button type="button" class="btn btn-outline btn-sm" onclick="document.getElementById('room-edit-form').remove();document.getElementById('room-display').style.display='';">Отмена</button>
+        </div>
+      </div>
+      <div class="card-content">
+        <div class="form-group">
+          <label class="form-label" for="title">Название комнаты</label>
+          <input type="text" id="title" name="title" value="{{ room.title }}" required maxlength="200">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="description">Описание</label>
+          <textarea id="description" name="description" class="large">{{ room.description or '' }}</textarea>
+        </div>
+        <h3 style="font-size:0.8125rem;font-weight:600;margin-bottom:0.75rem">Правила</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:0.75rem">
+          <div class="form-group">
+            <label class="form-label" for="roles">Роли</label>
+            <input type="text" id="roles" name="roles" value="{{ room.rules.roles if room.rules else '' }}" placeholder="Покупатель, Продавец">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="format">Формат</label>
+            <input type="text" id="format" name="format" value="{{ room.rules.format if room.rules else '' }}" placeholder="Пошаговые переговоры">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="completion_criteria">Критерии завершения</label>
+            <input type="text" id="completion_criteria" name="completion_criteria" value="{{ room.rules.completion_criteria if room.rules else '' }}" placeholder="Достижение соглашения">
+          </div>
+        </div>
+        <div class="form-group" style="max-width:200px">
+          <label class="form-label" for="max_messages">Макс. сообщений</label>
+          <input type="number" id="max_messages" name="max_messages" value="{{ room.max_messages }}" min="1">
+        </div>
+      </div>
+    </div>
+  </form>
+</div>

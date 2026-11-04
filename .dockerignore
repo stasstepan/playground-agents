@@ -1,0 +1,19 @@
+# Секреты и локальные данные не должны попадать в образ
+.env
+*.db
+*.sqlite3
+
+# Python-мусор
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+.venv/
+venv/
+
+# Не нужно в прод-образе
+tests/
+var/
+README.md
+RUN.md
+Caddyfile

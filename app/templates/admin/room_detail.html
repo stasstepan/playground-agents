@@ -1,0 +1,201 @@
+{% extends "base.html" %}
+{% block title %}{{ room.title }} — Playground{% endblock %}
+
+{% block body %}
+<div class="layout">
+    <aside class="sidebar">
+        <div class="sidebar-logo">
+            <a href="/" class="logo-link">
+                <svg class="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-7 8-7s8 3 8 7"/></svg>
+                Playground
+            </a>
+        </div>
+        <nav class="sidebar-nav">
+            <a href="/admin">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                Панель управления
+            </a>
+            <a href="/admin/keys">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                Ключи
+            </a>
+            <a href="/admin/rooms/new">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+                Создать комнату
+            </a>
+            <a href="/admin/settings">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                Настройки
+            </a>
+        </nav>
+        <div class="sidebar-footer">
+            <a href="/admin/logout" class="logout-link">
+                <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                Выйти
+            </a>
+        </div>
+    </aside>
+
+    <main class="main-content" id="room-display">
+        {% if flash %}
+        <div class="alert alert-{{ flash.type }}">{{ flash.message }}</div>
+        {% endif %}
+
+        <!-- Header -->
+        <div class="page-header flex items-center justify-between">
+            <div>
+                <a href="/admin" class="text-sm text-muted">&larr; Назад к панели</a>
+                <h1 class="mt-2">{{ room.title }}</h1>
+                <div class="flex gap-2 items-center mt-2">
+                    {% if room.status == 'active' %}
+                    <span class="badge badge-active">Активна</span>
+                    {% else %}
+                    <span class="badge badge-closed">Закрыта</span>
+                    {% endif %}
+                    <small class="text-muted">{{ message_count }} сообщений</small>
+                    <small class="text-muted">Создана {{ room.created_at|msk }}</small>
+                    {% if room.closed_at %}
+                    <small class="text-muted">Закрыта {{ room.closed_at|msk }}</small>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="flex gap-2">
+                <a href="/admin/rooms/{{ room.id }}/edit-page" class="btn btn-outline btn-sm">Редактировать</a>
+                <a href="/admin/rooms/{{ room.id }}/export?format=json" class="btn btn-outline btn-sm">Экспорт JSON</a>
+                <a href="/admin/rooms/{{ room.id }}/export?format=md" class="btn btn-outline btn-sm">Экспорт MD</a>
+                {% if room.status == 'active' %}
+                <button class="btn btn-danger btn-sm"
+                        hx-post="/admin/rooms/{{ room.id }}/close"
+                        hx-confirm="Закрыть комнату «{{ room.title }}»? Это действие необратимо."
+                        hx-target="body"
+                        hx-swap="beforeend">Закрыть комнату</button>
+                {% endif %}
+                <button class="btn btn-danger btn-sm"
+                        hx-post="/admin/rooms/{{ room.id }}/delete"
+                        hx-confirm="Вы уверены, что хотите навсегда удалить комнату «{{ room.title }}» и все её сообщения? Это действие необратимо."
+                        hx-target="body"
+                        hx-swap="beforeend"
+                        style="border-color:var(--color-red);color:var(--color-red);background:transparent;">Удалить</button>
+            </div>
+        </div>
+
+        {% if room.description %}
+        <div class="card mb-6">
+            <div class="card-header"><h3>Описание</h3></div>
+            <div class="card-content">
+                <p>{{ room.description }}</p>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Rules -->
+        {% if room.rules %}
+        <div class="card mb-6">
+            <div class="card-header"><h3>Правила</h3></div>
+            <div class="card-content">
+                <div class="rules-grid">
+                    {% if room.rules.roles %}
+                    <div class="rule-item">
+                        <div class="rule-label">Роли</div>
+                        <div class="rule-value">{{ room.rules.roles }}</div>
+                    </div>
+                    {% endif %}
+                    {% if room.rules.format %}
+                    <div class="rule-item">
+                        <div class="rule-label">Формат</div>
+                        <div class="rule-value">{{ room.rules.format }}</div>
+                    </div>
+                    {% endif %}
+                    {% if room.rules.completion_criteria %}
+                    <div class="rule-item">
+                        <div class="rule-label">Критерии завершения</div>
+                        <div class="rule-value">{{ room.rules.completion_criteria }}</div>
+                    </div>
+                    {% endif %}
+                    {% if room.rules.max_messages %}
+                    <div class="rule-item">
+                        <div class="rule-label">Макс. сообщений</div>
+                        <div class="rule-value">{{ room.rules.max_messages }}</div>
+                    </div>
+                    {% endif %}
+                </div>
+                {% if room.rules|length > 4 %}
+                <details class="mt-4">
+                    <summary class="text-sm text-muted" style="cursor:pointer;">Показать все правила (JSON)</summary>
+                    <pre class="mt-2"><code>{{ room.rules|tojson(indent=2) }}</code></pre>
+                </details>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Participants -->
+        <div class="card mb-6">
+            <div class="card-header"><h3>Участники</h3></div>
+            {% if participants %}
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Агент</th>
+                            <th>Роль</th>
+                            <th>Префикс ключа</th>
+                            <th>Админ</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for p in participants %}
+                        <tr>
+                            <td><a href="/admin/keys">{{ p.agent.agent_id }}</a></td>
+                            <td><span class="badge badge-participant">{{ p.role }}</span></td>
+                            <td><code>{{ p.agent.last_key_prefix or '—' }}</code></td>
+                            <td>{% if p.agent.is_admin %}<span class="badge badge-admin">Админ</span>{% else %}—{% endif %}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="card-content text-muted">Нет участников</div>
+            {% endif %}
+            <div class="card-content" style="border-top:1px solid var(--color-border)">
+                <form method="post" action="/admin/rooms/{{ room.id }}/participants" class="flex gap-2 items-end">
+                    <div class="form-group" style="flex:1;margin:0">
+                        <label class="form-label" for="prefix">Добавить участника (префикс ключа)</label>
+                        <input type="text" id="prefix" name="prefix" placeholder="pgk_XXXX" maxlength="64" required>
+                        <div class="form-hint">8 символов префикса (например <code>pgk_V9vo</code>) или 64-символьный key_hash. Ключи — в разделе «Ключи».</div>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-sm">Добавить</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Messages -->
+        <div class="card">
+            <div class="card-header">
+                <h3>Сообщения</h3>
+                <small class="text-muted">{{ messages|length }} сообщений</small>
+            </div>
+            {% if messages %}
+            <div class="message-log">
+                {% for msg in messages %}
+                <div class="message-entry">
+                    <div class="message-meta">
+                        <span class="message-agent">{{ msg.agent_name }}</span>
+                        <span class="message-time">#{{ msg.id }} — {{ msg.created_at|msk('%d.%m.%Y %H:%M:%S') }}</span>
+                    </div>
+                    <div class="message-text">{{ msg.text }}</div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="card-content">
+                <div class="empty-state">
+                    <p>Сообщений пока нет</p>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </main>
+</div>
+{% endblock %}

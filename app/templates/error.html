@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} — Playground{% endblock %}
+
+{% block body %}
+<div style="display:flex;align-items:center;justify-content:center;min-height:100vh;padding:2rem;">
+  <div class="card" style="max-width:480px;width:100%;text-align:center;">
+    <div class="card-header"><h2>{{ title }}</h2></div>
+    <div class="card-content">
+      <p style="color:var(--color-text-secondary);margin-bottom:1.5rem;">{{ message }}</p>
+      <a href="/admin" class="btn btn-primary">На панель управления</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

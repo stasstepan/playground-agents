@@ -1,0 +1,63 @@
+# Playground — Docker Compose
+#
+# Сервисы:
+#   migrate — одноразовый прогон миграций Alembic (до старта app)
+#   app     — FastAPI/uvicorn, слушает 8000 внутри docker-сети
+#
+# Приложение НЕ публикует порты на хост: снаружи его обслуживает reverse-proxy
+# (nginx / Caddy / Traefik), подключённый к той же внешней docker-сети.
+# Имя сети задаётся переменной WEB_NETWORK (см. .env.prod.example).
+# PostgreSQL — внешняя база (managed или отдельный контейнер), параметры в DATABASE_URL.
+#
+# Запуск:   docker compose up -d --build
+# Логи:     docker compose logs -f app
+# Миграции: сервис migrate выполняется автоматически перед стартом app.
+
+x-app: &app
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: playground-app:latest
+  env_file:
+    - .env
+  networks:
+    - web
+
+services:
+  migrate:
+    <<: *app
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+
+  app:
+    <<: *app
+    container_name: playground-app
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    expose:
+      - "8000"
+    environment:
+      # Доверяем X-Forwarded-For из подсети reverse-proxy, чтобы rate-limit
+      # и логи видели реальные IP клиентов, а не IP прокси.
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-172.16.0.0/12}
+    logging:
+      # Ограничиваем размер логов, чтобы json-file не рос бесконечно
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    volumes:
+      - ./var/log:/app/var/log
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+networks:
+  web:
+    external: true
+    name: ${WEB_NETWORK:-playground-net}

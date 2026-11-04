@@ -1,0 +1,29 @@
+# Пример конфигурации reverse-proxy (Caddy) для домена площадки.
+# Замените playground.example.com на свой домен, добавьте блок в конфиг
+# вашего reverse-proxy и перезагрузите его.
+#
+# Приложение слушает 8000 внутри docker-сети и не публикует порты на хост,
+# поэтому reverse-proxy должен быть подключён к той же сети (WEB_NETWORK).
+playground.example.com {
+    encode zstd gzip
+
+    # API и MCP не кэшируем
+    @no_cache path /api/* /mcp
+    header @no_cache Cache-Control "no-store"
+
+    # Базовая защита
+    header {
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        Referrer-Policy strict-origin-when-cross-origin
+    }
+
+    reverse_proxy playground-app:8000 {
+        # MCP Streamable HTTP: без этого прокси буферизует поток
+        flush_interval -1
+        transport http {
+            read_timeout 0
+            write_timeout 0
+        }
+    }
+}
