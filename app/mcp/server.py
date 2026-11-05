@@ -235,18 +235,42 @@ def json_rpc_success(req_id: Any, result: Any, meta: dict | None = None) -> dict
 
 
 # ---------------------------------------------------------------------------
+# Protocol versions
+# ---------------------------------------------------------------------------
+
+# Версии, которые понимает сервер (см. спецификацию MCP). По умолчанию
+# отвечаем 2025-11-25; если клиент прислал поддерживаемую версию — её и возвращаем.
+SUPPORTED_PROTOCOL_VERSIONS = (
+    "2025-11-25",
+    "2025-06-18",
+    "2025-03-26",
+    "2024-11-05",
+)
+DEFAULT_PROTOCOL_VERSION = "2025-11-25"
+
+
+# ---------------------------------------------------------------------------
 # Auth helper (used directly in the endpoint, not as FastAPI Depends)
 # ---------------------------------------------------------------------------
 
 
-async def _authenticate(auth_header: str, db: AsyncSession) -> Agent:
-    """Validate the Bearer token and return the Agent."""
-    if not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing or malformed Authorization header")
-
-    raw_key = auth_header.removeprefix("Bearer ").strip()
+async def _authenticate(
+    auth_header: str, api_key_header: str, db: AsyncSession
+) -> Agent:
+    """Validate an API key from Authorization: Bearer <key> or X-API-Key: <key>."""
+    raw_key = ""
+    if auth_header:
+        scheme, _, value = auth_header.partition(" ")
+        if scheme.lower() == "bearer":
+            raw_key = value.strip()
     if not raw_key:
-        raise HTTPException(status_code=401, detail="Empty API key")
+        raw_key = (api_key_header or "").strip()
+
+    if not raw_key:
+        raise HTTPException(
+            status_code=401,
+            detail="Missing API key: send Authorization: Bearer <key> or X-API-Key: <key>",
+        )
 
     key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
 
@@ -277,10 +301,15 @@ async def _handle_initialize(req_id: Any, agent: Agent, params: dict) -> dict:
         session.meta["agent_id"] = str(agent.id)
         session.touch()
 
+    requested = (params or {}).get("protocolVersion")
+    negotiated = (
+        requested if requested in SUPPORTED_PROTOCOL_VERSIONS else DEFAULT_PROTOCOL_VERSION
+    )
+
     return json_rpc_success(
         req_id,
         {
-            "protocolVersion": "2026-04-15",
+            "protocolVersion": negotiated,
             "serverInfo": {
                 "name": "playground-mcp",
                 "version": "0.1.0",
@@ -354,18 +383,24 @@ async def mcp_endpoint(request: Request) -> Response:
     """
     # --- 1. Authenticate ---
     auth_header = request.headers.get("Authorization", "")
+    api_key_header = request.headers.get("X-API-Key", "")
     # We need a DB session for auth; we also need it for tool calls.
     # We'll open one session for the whole request.
     async with async_session_factory() as db:
         try:
-            agent = await _authenticate(auth_header, db)
+            agent = await _authenticate(auth_header, api_key_header, db)
         except HTTPException as exc:
-            # Return JSON-RPC error for auth failures
+            # По MCP-спецификации для HTTP-транспорта неверная авторизация — это
+            # HTTP 401 (+ WWW-Authenticate), а не 200: иначе штатные клиенты
+            # не понимают, что нужно прислать ключ.
             resp = json_rpc_error(None, -32001, exc.detail)
             return Response(
                 content=json.dumps(resp, ensure_ascii=False),
                 media_type="application/json",
-                status_code=200,  # JSON-RPC always returns 200 at HTTP level
+                status_code=401,
+                headers={
+                    "WWW-Authenticate": 'Bearer realm="playground", error="invalid_token"'
+                },
             )
 
         # --- 2. Parse body ---
@@ -382,17 +417,33 @@ async def mcp_endpoint(request: Request) -> Response:
         method = body.get("method", "")
         params = body.get("params", {})
 
-        # --- 3. Route ---
+        # --- 3. MCP-Protocol-Version (заголовок после initialize) ---
+        protocol_header = request.headers.get("MCP-Protocol-Version")
+        if protocol_header and protocol_header not in SUPPORTED_PROTOCOL_VERSIONS:
+            resp = json_rpc_error(
+                req_id,
+                -32600,
+                f"Unsupported MCP-Protocol-Version: {protocol_header}",
+            )
+            return Response(
+                content=json.dumps(resp, ensure_ascii=False),
+                media_type="application/json",
+                status_code=400,
+            )
+
+        # --- 4. Route ---
+        # Имена методов — по спецификации MCP; старые (list_tools/call_tool)
+        # поддерживаются как алиасы для обратной совместимости.
         if method == "initialize":
             resp = await _handle_initialize(req_id, agent, params)
-        elif method == "list_tools":
+        elif method in ("tools/list", "list_tools"):
             resp = await _handle_list_tools(req_id, agent, params)
-        elif method == "call_tool":
+        elif method in ("tools/call", "call_tool"):
             resp = await _handle_call_tool(req_id, agent, params, db)
         elif method == "ping":
             resp = await _handle_ping(req_id)
-        elif method == "notifications/initialized":
-            # Client confirms initialization — no response needed per spec
+        elif method.startswith("notifications/"):
+            # Уведомления (initialized и любые другие) не имеют ответа
             return Response(status_code=202)
         else:
             resp = json_rpc_error(
@@ -403,3 +454,9 @@ async def mcp_endpoint(request: Request) -> Response:
             content=json.dumps(resp, ensure_ascii=False),
             media_type="application/json",
         )
+
+
+@router.delete("/mcp")
+async def mcp_session_terminate(request: Request) -> Response:
+    """Streamable HTTP: завершение сессии. У нас сервер stateless — 204."""
+    return Response(status_code=204)

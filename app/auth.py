@@ -12,21 +12,34 @@ from app.models.agent import Agent
 from app.models.room import Room
 
 
-async def get_api_key(request: Request, db: AsyncSession = Depends(get_db)) -> Agent:
-    """Extract Bearer token from Authorization header, hash it with SHA-256,
-    and look up the agent by key_hash. Raises 401 on any failure."""
-    auth_header = request.headers.get("Authorization")
-    if not auth_header or not auth_header.startswith("Bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Missing or malformed Authorization header",
-        )
+def _unauthorized(detail: str) -> HTTPException:
+    """401 с WWW-Authenticate — как ожидают стандартные клиенты."""
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail=detail,
+        headers={"WWW-Authenticate": 'Bearer realm="playground", error="invalid_token"'},
+    )
 
-    raw_key = auth_header.removeprefix("Bearer ").strip()
+
+def extract_raw_key(request: Request) -> str:
+    """Ключ из `Authorization: Bearer <key>` или `X-API-Key: <key>`."""
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header:
+        scheme, _, value = auth_header.partition(" ")
+        if scheme.lower() == "bearer" and value.strip():
+            return value.strip()
+    return (request.headers.get("X-API-Key") or "").strip()
+
+
+async def get_api_key(request: Request, db: AsyncSession = Depends(get_db)) -> Agent:
+    """Достаёт ключ (Bearer или X-API-Key), хэширует SHA-256 и ищет агента.
+
+    Raises 401 on any failure.
+    """
+    raw_key = extract_raw_key(request)
     if not raw_key:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Empty API key",
+        raise _unauthorized(
+            "Missing API key: send Authorization: Bearer <key> or X-API-Key: <key>"
         )
 
     key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
@@ -35,16 +48,10 @@ async def get_api_key(request: Request, db: AsyncSession = Depends(get_db)) -> A
     agent = result.scalar_one_or_none()
 
     if agent is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Unknown API key",
-        )
+        raise _unauthorized("Unknown API key")
 
     if agent.status != "active":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="API key has been revoked",
-        )
+        raise _unauthorized("API key has been revoked")
 
     return agent
 
